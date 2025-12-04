@@ -2,10 +2,10 @@ import flet as ft
 from components.sidebar import Sidebar
 
 class AppLayout(ft.Row):
-    def __init__(self, page, on_nav_change, initial_content):
+    def __init__(self, page, on_nav_change, initial_content, current_user=None):
         super().__init__()
         self.page = page
-        self.sidebar = Sidebar(page, on_nav_change)
+        self.sidebar = Sidebar(page, on_nav_change, current_user)
         self.content_area = ft.Container(content=initial_content, expand=True, padding=20)
         self.expand = True
         

@@ -1,2 +1,6 @@
 flet
 peewee
+reportlab
+bcrypt
+plyer
+cryptography

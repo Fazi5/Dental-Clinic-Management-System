@@ -10,21 +10,34 @@ class SupplierFormDialog(ft.AlertDialog):
         self.title = ft.Text("Add Supplier" if not supplier else "Edit Supplier")
         
         self.name_field = ft.TextField(label="Name", value=supplier.name if supplier else "")
+        self.category_field = ft.Dropdown(
+            label="Category",
+            options=[
+                ft.dropdown.Option("Dental Supplies"),
+                ft.dropdown.Option("Dental Laboratory"),
+            ],
+            value=supplier.category if supplier else "Dental Supplies"
+        )
         self.email_field = ft.TextField(label="Email", value=supplier.email if supplier else "")
         self.phone_field = ft.TextField(label="Phone", value=supplier.phone if supplier else "")
         self.location_field = ft.TextField(label="Location", value=supplier.location if supplier else "")
-        self.contact_info_field = ft.TextField(label="Other Contact Info", value=supplier.contact_info if supplier else "", multiline=True)
+        self.contact_info_field = ft.TextField(label="WhatsApp Number", value=supplier.contact_info if supplier else "")
+        self.details_field = ft.TextField(label="Additional Details", value=supplier.details if supplier else "", multiline=True, min_lines=3)
         
         self.content = ft.Column(
             [
                 self.name_field,
+                self.category_field,
                 self.email_field,
                 self.phone_field,
                 self.location_field,
                 self.contact_info_field,
+                self.details_field,
             ],
             tight=True,
-            width=400
+            width=400,
+            scroll=ft.ScrollMode.AUTO,
+            height=500
         )
         
         self.actions = [
@@ -38,12 +51,35 @@ class SupplierFormDialog(ft.AlertDialog):
 
     def save(self, e):
         try:
+            name = self.name_field.value
+            category = self.category_field.value
+            email = self.email_field.value
+            phone = self.phone_field.value
+            location = self.location_field.value
+            whatsapp = self.contact_info_field.value
+            details = self.details_field.value
+
+            # Validation
+            if not name or not phone or not location:
+                self.page.snack_bar = ft.SnackBar(ft.Text("Error: Name, Phone, and Location are required."))
+                self.page.snack_bar.open = True
+                self.page.update()
+                return
+
+            if email and "@" not in email:
+                self.page.snack_bar = ft.SnackBar(ft.Text("Error: Invalid email format."))
+                self.page.snack_bar.open = True
+                self.page.update()
+                return
+
             data = {
-                "name": self.name_field.value,
-                "email": self.email_field.value,
-                "phone": self.phone_field.value,
-                "location": self.location_field.value,
-                "contact_info": self.contact_info_field.value,
+                "name": name,
+                "category": category,
+                "email": email,
+                "phone": phone,
+                "location": location,
+                "contact_info": whatsapp,
+                "details": details,
             }
             
             if self.supplier:
@@ -61,14 +97,35 @@ class SupplierFormDialog(ft.AlertDialog):
             self.page.snack_bar.open = True
             self.page.update()
 
+from utils.data_handler import export_to_csv, export_to_pdf, import_from_csv
+
 class SupplierView(ft.Column):
     def __init__(self):
         super().__init__()
         self.expand = True
+        
+        self.export_csv_dialog = ft.FilePicker(on_result=self.export_csv_result)
+        self.export_pdf_dialog = ft.FilePicker(on_result=self.export_pdf_result)
+        self.import_csv_dialog = ft.FilePicker(on_result=self.import_csv_result)
+
         self.controls = [
+            self.export_csv_dialog,
+            self.export_pdf_dialog,
+            self.import_csv_dialog,
+            
             ft.Row([
                 ft.Text("Suppliers", size=30, weight=ft.FontWeight.BOLD),
-                ft.IconButton(ft.Icons.ADD, on_click=self.add_supplier_click)
+                ft.Row([
+                    ft.PopupMenuButton(
+                        icon=ft.Icons.MORE_VERT,
+                        items=[
+                            ft.PopupMenuItem(text="Export CSV", icon=ft.Icons.DOWNLOAD, on_click=lambda _: self.export_csv_dialog.save_file(allowed_extensions=["csv"], file_name="suppliers.csv")),
+                            ft.PopupMenuItem(text="Export PDF", icon=ft.Icons.PICTURE_AS_PDF, on_click=lambda _: self.export_pdf_dialog.save_file(allowed_extensions=["pdf"], file_name="suppliers.pdf")),
+                            ft.PopupMenuItem(text="Import CSV", icon=ft.Icons.UPLOAD, on_click=lambda _: self.import_csv_dialog.pick_files(allowed_extensions=["csv"])),
+                        ]
+                    ),
+                    ft.IconButton(ft.Icons.ADD, on_click=self.add_supplier_click)
+                ])
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(),
             self.build_data_table()
@@ -80,20 +137,17 @@ class SupplierView(ft.Column):
         return ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("Name")),
-                ft.DataColumn(ft.Text("Email")),
-                ft.DataColumn(ft.Text("Phone")),
-                ft.DataColumn(ft.Text("Location")),
+                ft.DataColumn(ft.Text("Category")),
                 ft.DataColumn(ft.Text("Actions")),
             ],
             rows=[
                 ft.DataRow(
                     cells=[
                         ft.DataCell(ft.Text(s.name)),
-                        ft.DataCell(ft.Text(s.email or "-")),
-                        ft.DataCell(ft.Text(s.phone or "-")),
-                        ft.DataCell(ft.Text(s.location or "-")),
+                        ft.DataCell(ft.Text(s.category or "-")),
                         ft.DataCell(
                             ft.Row([
+                                ft.IconButton(ft.Icons.INFO_OUTLINE, tooltip="Details", on_click=lambda e, s=s: self.show_details_click(e, s)),
                                 ft.IconButton(ft.Icons.EDIT, on_click=lambda e, s=s: self.edit_supplier_click(e, s)),
                                 ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED, on_click=lambda e, s=s: self.delete_supplier_click(e, s))
                             ])
@@ -103,6 +157,27 @@ class SupplierView(ft.Column):
             ],
             width=float('inf'),
         )
+
+    def show_details_click(self, e, supplier):
+        content = ft.Column([
+            ft.Text(f"Name: {supplier.name}", size=16, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Category: {supplier.category or 'N/A'}"),
+            ft.Text(f"Email: {supplier.email or 'N/A'}"),
+            ft.Text(f"Phone: {supplier.phone or 'N/A'}"),
+            ft.Text(f"Location: {supplier.location or 'N/A'}"),
+            ft.Text(f"WhatsApp: {supplier.contact_info or 'N/A'}"),
+            ft.Text(f"Details: {supplier.details or 'N/A'}"),
+        ], tight=True)
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Supplier Details"),
+            content=content,
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: e.page.close(dialog))
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        e.page.open(dialog)
 
     def add_supplier_click(self, e):
         dialog = SupplierFormDialog(e.page, self.refresh_table)
@@ -138,3 +213,38 @@ class SupplierView(ft.Column):
     def refresh_table(self):
         self.controls[-1] = self.build_data_table()
         self.update()
+
+    def export_csv_result(self, e: ft.FilePickerResultEvent):
+        if e.path:
+            query = Supplier.select()
+            fields = ["name", "category", "email", "phone", "location", "contact_info", "details"]
+            success, msg = export_to_csv(query, e.path, fields)
+            self.page.snack_bar = ft.SnackBar(ft.Text(msg))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+    def export_pdf_result(self, e: ft.FilePickerResultEvent):
+        if e.path:
+            query = Supplier.select()
+            fields = ["name", "category", "email", "phone", "location"]
+            success, msg = export_to_pdf(query, e.path, "Supplier Report", fields)
+            self.page.snack_bar = ft.SnackBar(ft.Text(msg))
+            self.page.snack_bar.open = True
+            self.page.update()
+
+    def import_csv_result(self, e: ft.FilePickerResultEvent):
+        if e.files:
+            field_map = {
+                "name": "name",
+                "category": "category",
+                "email": "email",
+                "phone": "phone",
+                "location": "location",
+                "contact_info": "contact_info",
+                "details": "details"
+            }
+            success, msg = import_from_csv(Supplier, e.files[0].path, field_map)
+            self.page.snack_bar = ft.SnackBar(ft.Text(msg))
+            self.page.snack_bar.open = True
+            self.page.update()
+            self.refresh_table()
